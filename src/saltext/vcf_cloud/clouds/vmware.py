@@ -879,8 +879,10 @@ def avail_sizes(call=None):
 
 
 def list_nodes_min(kwargs=None, call=None):
-    """Return VM names and power states."""
-    return {item["name"]: item["state"] for item in _summary_instances()}
+    """Return VM names mapped to their IDs and power states."""
+    return {
+        item["name"]: {"id": item["id"], "state": item["state"]} for item in _summary_instances()
+    }
 
 
 def list_nodes(kwargs=None, call=None):

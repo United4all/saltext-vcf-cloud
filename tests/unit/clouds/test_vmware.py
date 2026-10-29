@@ -1170,7 +1170,8 @@ def test_list_node_views(monkeypatch):
     ]
     monkeypatch.setattr(cloud, "_summary_instances", lambda: instances)
 
-    assert cloud.list_nodes_min() == {"vm-01": "poweredOn"}
+    # Salt Cloud's Map.map_data() reads details["state"] from each list_nodes_min value.
+    assert cloud.list_nodes_min() == {"vm-01": {"id": "vm-101", "state": "poweredOn"}}
     assert cloud.list_nodes()["vm-01"]["id"] == "vm-101"
     assert cloud.list_nodes_full() == {"vm-01": instances[0]}
 
