@@ -1254,6 +1254,29 @@ def test_list_node_views(monkeypatch):
     assert cloud.list_nodes_full() == {"vm-01": instances[0]}
 
 
+@pytest.mark.parametrize(
+    ("power_state", "state"),
+    [
+        ("poweredOn", "running"),
+        ("poweredOff", "stopped"),
+        ("suspended", "suspended"),
+        ("unknown", "unknown"),
+    ],
+)
+def test_summary_instance_data_uses_salt_cloud_states(power_state, state):
+    item = {
+        "object": SimpleNamespace(_moId="vm-101"),
+        "name": "vm-01",
+        "runtime.powerState": power_state,
+    }
+
+    data = cloud._summary_instance_data(item)
+
+    # Salt Cloud's map actions (-a start/stop/reboot) match on "running"/"stopped".
+    assert data["state"] == state
+    assert data["power_state"] == power_state
+
+
 def test_list_nodes_select_accepts_function_kwargs(monkeypatch, loader_globals):
     loader_globals.opts["query.selection"] = ["id", "state"]
     monkeypatch.setattr(

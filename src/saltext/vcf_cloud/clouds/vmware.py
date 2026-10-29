@@ -788,6 +788,20 @@ def _ip_lists(vm_ref):
     return private_ips, public_ips
 
 
+# Salt Cloud compares ``state`` against its own vocabulary, e.g. ``salt-cloud -m <map> -a stop``
+# only actions VMs whose state is "running" or "active", and ``-a start`` those that are "stopped".
+_SALT_CLOUD_STATES = {
+    "poweredOn": "running",
+    "poweredOff": "stopped",
+    "suspended": "suspended",
+}
+
+
+def _salt_cloud_state(power_state):
+    power_state = str(power_state)
+    return _SALT_CLOUD_STATES.get(power_state, power_state)
+
+
 def _instance_data(vm_ref):
     private_ips, public_ips = _ip_lists(vm_ref)
     config_data = vm_ref.config
@@ -795,7 +809,8 @@ def _instance_data(vm_ref):
     return {
         "id": vm_ref._moId,  # pylint: disable=protected-access
         "name": vm_ref.name,
-        "state": str(vm_ref.runtime.powerState),
+        "state": _salt_cloud_state(vm_ref.runtime.powerState),
+        "power_state": str(vm_ref.runtime.powerState),
         "image": getattr(config_data, "guestFullName", None),
         "size": {
             "cpu": getattr(summary.config, "numCpu", None),
@@ -824,7 +839,8 @@ def _summary_instance_data(item):
     return {
         "id": item["object"]._moId,  # pylint: disable=protected-access
         "name": item.get("name"),
-        "state": str(item.get("runtime.powerState")),
+        "state": _salt_cloud_state(item.get("runtime.powerState")),
+        "power_state": str(item.get("runtime.powerState")),
         "image": item.get("config.guestFullName", ""),
         "size": {
             "cpu": item.get("config.hardware.numCPU"),

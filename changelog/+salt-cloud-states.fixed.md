@@ -1,0 +1,1 @@
+Report `state` as Salt Cloud's `running`/`stopped`/`suspended` instead of vSphere's `poweredOn`/`poweredOff`, so `salt-cloud -m <map> -a start|stop|reboot` finds the map's VMs. The raw vSphere value is kept as `power_state`.
