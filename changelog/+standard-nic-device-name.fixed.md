@@ -1,0 +1,1 @@
+Set `deviceName` when attaching a NIC to a standard port group. The empty `deviceName` sent by saltext.vcf's NIC helpers left the NIC on a `LegacyNetworkBackingInfo` without a network, so guest customization failed with "Incompatible device backing specified for device '0'".

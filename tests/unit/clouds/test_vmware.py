@@ -520,7 +520,11 @@ def test_configure_networks_updates_existing_nic_connection_state(monkeypatch):
     monkeypatch.setattr(cloud.vim_vm_nic, "list_", lambda *args: [current])
     monkeypatch.setattr(cloud.vim_vm_nic, "update_backing", update_backing)
     monkeypatch.setattr(cloud.vim_vm_nic, "set_connected", set_connected)
-    monkeypatch.setattr(cloud, "_network_target", lambda *args: {"network_moid": "n-1"})
+    monkeypatch.setattr(
+        cloud,
+        "_network_target",
+        lambda *args: {"portgroup_key": "dvportgroup-1", "dvs_uuid": "dvs-uuid"},
+    )
     monkeypatch.setattr(cloud, "_wait_task", wait)
 
     cloud._configure_networks(
@@ -537,13 +541,87 @@ def test_configure_networks_updates_existing_nic_connection_state(monkeypatch):
     )
 
     update_backing.assert_called_once_with(
-        {"connection": "opts"}, "vm-01", 4000, network_moid="n-1"
+        {"connection": "opts"},
+        "vm-01",
+        4000,
+        portgroup_key="dvportgroup-1",
+        dvs_uuid="dvs-uuid",
     )
     set_connected.assert_called_once_with({"connection": "opts"}, "vm-01", 4000, False)
     assert wait.call_args_list == [
         (("task-backing",), {"timeout": 30}),
         (("task-connected",), {"timeout": 30}),
     ]
+
+
+def test_configure_networks_sets_standard_backing_on_existing_nic(monkeypatch):
+    current = {"key": 4000, "label": "Network adapter 1", "start_connected": True}
+    update_backing = MagicMock()
+    set_backing = MagicMock(return_value="task-backing")
+    wait = MagicMock()
+    monkeypatch.setattr(cloud, "_vcf_opts", dict)
+    monkeypatch.setattr(cloud.vim_vm_nic, "list_", lambda *args: [current])
+    monkeypatch.setattr(cloud.vim_vm_nic, "update_backing", update_backing)
+    monkeypatch.setattr(cloud, "_set_standard_nic_backing", set_backing)
+    monkeypatch.setattr(cloud, "_network_target", lambda *args: {"network_moid": "network-10"})
+    monkeypatch.setattr(cloud, "_wait_task", wait)
+
+    cloud._configure_networks("vm-01", {"Network adapter 1": {"name": "server-vlan"}}, timeout=30)
+
+    update_backing.assert_not_called()
+    set_backing.assert_called_once_with("vm-01", 4000, "network-10")
+    wait.assert_called_once_with("task-backing", timeout=30)
+
+
+def test_configure_networks_sets_standard_backing_on_added_nic(monkeypatch):
+    existing = {"key": 4000, "label": "Network adapter 1"}
+    added = {"key": 4001, "label": "Network adapter 2"}
+    listings = iter([[existing], [existing, added]])
+    add = MagicMock(return_value="task-add")
+    set_backing = MagicMock(return_value="task-backing")
+    wait = MagicMock()
+    monkeypatch.setattr(cloud, "_vcf_opts", dict)
+    monkeypatch.setattr(cloud.vim_vm_nic, "list_", lambda *args: next(listings))
+    monkeypatch.setattr(cloud.vim_vm_nic, "add", add)
+    monkeypatch.setattr(cloud, "_set_standard_nic_backing", set_backing)
+    monkeypatch.setattr(cloud, "_network_target", lambda *args: {"network_moid": "network-10"})
+    monkeypatch.setattr(cloud, "_wait_task", wait)
+
+    cloud._configure_networks("vm-01", {"Network adapter 2": {"name": "server-vlan"}}, timeout=30)
+
+    add.assert_called_once()
+    set_backing.assert_called_once_with("vm-01", 4001, "network-10")
+    assert wait.call_args_list == [
+        (("task-add",), {"timeout": 30}),
+        (("task-backing",), {"timeout": 30}),
+    ]
+
+
+def test_set_standard_nic_backing_includes_device_name(monkeypatch):
+    class Network(cloud.vim.Network):
+        name = "server-vlan"
+
+    network = Network("network-10", None)
+    nic = cloud.vim.vm.device.VirtualVmxnet3(key=4000)
+    disk = cloud.vim.vm.device.VirtualDisk(key=2000)
+    vm_ref = SimpleNamespace(
+        config=SimpleNamespace(hardware=SimpleNamespace(device=[disk, nic])),
+        ReconfigVM_Task=MagicMock(return_value="task-backing"),
+    )
+    monkeypatch.setattr(cloud, "_find_object", lambda vim_type, name: network)
+    monkeypatch.setattr(cloud, "_vm", lambda name: vm_ref)
+
+    assert cloud._set_standard_nic_backing("vm-01", 4000, "network-10") == "task-backing"
+
+    change = vm_ref.ReconfigVM_Task.call_args.kwargs["spec"].deviceChange[0]
+    assert change.operation == "edit"
+    assert change.device is nic
+    assert isinstance(
+        change.device.backing, cloud.vim.vm.device.VirtualEthernetCard.NetworkBackingInfo
+    )
+    assert change.device.backing.network is network
+    # An empty deviceName makes vCenter store a LegacyNetworkBackingInfo without a network.
+    assert change.device.backing.deviceName == "server-vlan"
 
 
 @pytest.mark.parametrize(

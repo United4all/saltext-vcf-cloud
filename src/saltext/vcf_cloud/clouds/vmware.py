@@ -513,13 +513,36 @@ def _validate_existing_nic(label, current, settings):
         )
 
 
+def _set_standard_nic_backing(name, nic_key, network_moid):
+    """Attach a NIC to a standard port group, including the port group's ``deviceName``.
+
+    saltext.vcf's ``vim_vm_nic`` helpers send an empty ``deviceName`` for standard port
+    groups. vCenter then stores a ``LegacyNetworkBackingInfo`` without a network, and guest
+    customization fails with "Incompatible device backing specified for device '0'".
+    """
+    network = _find_object(vim.Network, network_moid)
+    vm_ref = _vm(name)
+    nic = next(device for device in vm_ref.config.hardware.device if device.key == nic_key)
+    nic.backing = vim.vm.device.VirtualEthernetCard.NetworkBackingInfo(
+        network=network, deviceName=network.name
+    )
+    spec = vim.vm.ConfigSpec(
+        deviceChange=[vim.vm.device.VirtualDeviceSpec(operation="edit", device=nic)]
+    )
+    return vm_ref.ReconfigVM_Task(spec=spec)
+
+
 def _configure_networks(name, network_devices, timeout):
     for label, settings in (network_devices or {}).items():
-        current = _match_by_label(vim_vm_nic.list_(_vcf_opts(), name), label)
+        nics = vim_vm_nic.list_(_vcf_opts(), name)
+        current = _match_by_label(nics, label)
         target = _network_target(settings["name"], settings.get("switch_type"))
         if current:
             _validate_existing_nic(label, current, settings)
-            task = vim_vm_nic.update_backing(_vcf_opts(), name, current["key"], **target)
+            if "network_moid" in target:
+                task = _set_standard_nic_backing(name, current["key"], target["network_moid"])
+            else:
+                task = vim_vm_nic.update_backing(_vcf_opts(), name, current["key"], **target)
             _wait_task(task, timeout=timeout)
             if "start_connected" in settings:
                 start_connected = _as_bool(settings["start_connected"])
@@ -538,6 +561,15 @@ def _configure_networks(name, network_devices, timeout):
                 **target,
             )
             _wait_task(task, timeout=timeout)
+            if "network_moid" in target:
+                existing_keys = {nic["key"] for nic in nics}
+                new_key = next(
+                    nic["key"]
+                    for nic in vim_vm_nic.list_(_vcf_opts(), name)
+                    if nic["key"] not in existing_keys
+                )
+                task = _set_standard_nic_backing(name, new_key, target["network_moid"])
+                _wait_task(task, timeout=timeout)
 
 
 def _disk_size_gb(value):
