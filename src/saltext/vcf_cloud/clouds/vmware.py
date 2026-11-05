@@ -1029,6 +1029,26 @@ def reboot(name, call=None):
     return vim_vm_power.reboot_guest(_vcf_opts(), name)
 
 
+def reset(name, kwargs=None, call=None):
+    """Hard-reset a VM, or request a guest reboot when ``soft`` is true.
+
+    Returns the same messages as Salt's former core VMware driver: ``reset``, or
+    ``cannot reset in suspended/powered off state``.
+    """
+    if str(_vm(name).runtime.powerState) in ("suspended", "poweredOff"):
+        ret = "cannot reset in suspended/powered off state"
+        log.info("VM %s %s", name, ret)
+        return ret
+    soft = _as_bool((kwargs or {}).get("soft", False))
+    log.info("Resetting VM %s", name)
+    if soft:
+        vim_vm_power.reboot_guest(_vcf_opts(), name)
+    else:
+        task = vim_vm_power.reset(_vcf_opts(), name)
+        _wait_task(task, timeout=_task_timeout())
+    return "reset"
+
+
 def destroy(name, call=None):
     """Power off and destroy a VM through the native Salt Cloud lifecycle."""
     if call == "function":

@@ -1,0 +1,1 @@
+Add the `reset` action from Salt's former core VMware driver: `salt-cloud -a reset <name>` hard-resets a running VM (or requests a guest reboot with `soft=true`) and returns `reset`, or `cannot reset in suspended/powered off state`.

@@ -22,7 +22,7 @@ extension handles the vSphere operations through `saltext.vcf` and pyVmomi.
 - Apply a named vCenter customization spec or generate a Linux customization spec.
 - Wait for an address reported by VMware Tools, run the native Salt bootstrap,
   and return the new minion's complete grains dictionary.
-- List, inspect, start, stop, reboot, and destroy VMs.
+- List, inspect, start, stop, reboot, reset, and destroy VMs.
 - Use normal Salt Cloud providers, profiles, maps, events, cache, and key lifecycle.
 
 The driver has been integration-tested with Salt 3008.2, `saltext.vcf` 1.0.0,
@@ -319,6 +319,7 @@ salt-cloud -F
 salt-cloud -a start web-01.example.com
 salt-cloud -a stop web-01.example.com
 salt-cloud -a reboot web-01.example.com
+salt-cloud -a reset web-01.example.com
 salt-cloud -a show_tags web-01.example.com
 salt-cloud -d web-01.example.com
 ```

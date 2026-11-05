@@ -871,7 +871,7 @@ def _power_mocks(monkeypatch, power_state):
     monkeypatch.setattr(cloud, "_task_timeout", lambda: 30)
     monkeypatch.setattr(cloud, "_wait_task", MagicMock())
     mocks = {}
-    for func in ("power_on", "power_off", "shutdown_guest"):
+    for func in ("power_on", "power_off", "shutdown_guest", "reset", "reboot_guest"):
         mocks[func] = MagicMock(return_value=f"task-{func}")
         monkeypatch.setattr(cloud.vim_vm_power, func, mocks[func])
     return mocks
@@ -916,6 +916,34 @@ def test_stop_parses_action_kwargs_soft_true(monkeypatch):
     assert cloud.stop("vm-01", {"soft": "true"}, call="action") == "powered off"
     mocks["shutdown_guest"].assert_called_once_with({"connection": "opts"}, "vm-01")
     mocks["power_off"].assert_not_called()
+
+
+def test_reset_resets_running_vm(monkeypatch):
+    mocks = _power_mocks(monkeypatch, "poweredOn")
+
+    assert cloud.reset("vm-01", {}, call="action") == "reset"
+    mocks["reset"].assert_called_once_with({"connection": "opts"}, "vm-01")
+    cloud._wait_task.assert_called_once_with(  # pylint: disable=protected-access
+        "task-reset", timeout=30
+    )
+    mocks["reboot_guest"].assert_not_called()
+
+
+def test_reset_soft_requests_guest_reboot(monkeypatch):
+    mocks = _power_mocks(monkeypatch, "poweredOn")
+
+    assert cloud.reset("vm-01", {"soft": "true"}, call="action") == "reset"
+    mocks["reboot_guest"].assert_called_once_with({"connection": "opts"}, "vm-01")
+    mocks["reset"].assert_not_called()
+
+
+@pytest.mark.parametrize("power_state", ["poweredOff", "suspended"])
+def test_reset_refuses_stopped_or_suspended_vm(monkeypatch, power_state):
+    mocks = _power_mocks(monkeypatch, power_state)
+
+    assert cloud.reset("vm-01", {}, call="action") == "cannot reset in suspended/powered off state"
+    mocks["reset"].assert_not_called()
+    mocks["reboot_guest"].assert_not_called()
 
 
 def test_create_clones_configures_and_calls_native_bootstrap(monkeypatch, loader_globals):
