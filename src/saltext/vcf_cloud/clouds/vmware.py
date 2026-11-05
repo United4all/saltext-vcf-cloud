@@ -1024,16 +1024,11 @@ def stop(name, kwargs=None, call=None):
     return "powered off"
 
 
-def reboot(name, call=None):
-    """Request a guest reboot through VMware Tools."""
-    return vim_vm_power.reboot_guest(_vcf_opts(), name)
-
-
-def reset(name, kwargs=None, call=None):
+def reboot(name, kwargs=None, call=None):
     """Hard-reset a VM, or request a guest reboot when ``soft`` is true.
 
-    Returns the same messages as Salt's former core VMware driver: ``reset``, or
-    ``cannot reset in suspended/powered off state``.
+    This is the ``reset`` action of Salt's former core VMware driver, with the same
+    messages: ``reset``, or ``cannot reset in suspended/powered off state``.
     """
     if str(_vm(name).runtime.powerState) in ("suspended", "poweredOff"):
         ret = "cannot reset in suspended/powered off state"
