@@ -989,20 +989,39 @@ def get_vcenter_version(kwargs=None, call=None):
 
 
 def start(name, call=None):
-    """Power on a VM."""
+    """Power on a VM.
+
+    Returns the same messages as Salt's former core VMware driver: ``powered on``
+    or ``already powered on``.
+    """
+    if str(_vm(name).runtime.powerState) == "poweredOn":
+        ret = "already powered on"
+        log.info("VM %s %s", name, ret)
+        return ret
+    log.info("Starting VM %s", name)
     task = vim_vm_power.power_on(_vcf_opts(), name)
     _wait_task(task, timeout=_task_timeout())
-    return True
+    return "powered on"
 
 
 def stop(name, kwargs=None, call=None):
-    """Power off a VM, or request a guest shutdown when ``soft`` is true."""
+    """Power off a VM, or request a guest shutdown when ``soft`` is true.
+
+    Returns the same messages as Salt's former core VMware driver: ``powered off``
+    or ``already powered off``.
+    """
+    if str(_vm(name).runtime.powerState) == "poweredOff":
+        ret = "already powered off"
+        log.info("VM %s %s", name, ret)
+        return ret
     soft = _as_bool((kwargs or {}).get("soft", False))
+    log.info("Stopping VM %s", name)
     if soft:
-        return vim_vm_power.shutdown_guest(_vcf_opts(), name)
-    task = vim_vm_power.power_off(_vcf_opts(), name)
-    _wait_task(task, timeout=_task_timeout())
-    return True
+        vim_vm_power.shutdown_guest(_vcf_opts(), name)
+    else:
+        task = vim_vm_power.power_off(_vcf_opts(), name)
+        _wait_task(task, timeout=_task_timeout())
+    return "powered off"
 
 
 def reboot(name, call=None):

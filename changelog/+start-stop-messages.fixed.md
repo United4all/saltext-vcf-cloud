@@ -1,0 +1,1 @@
+Return `powered on`/`already powered on` from `start` and `powered off`/`already powered off` from `stop`, as Salt's former core VMware driver did, instead of `True`. A VM that is already in the requested state is no longer sent a power task.

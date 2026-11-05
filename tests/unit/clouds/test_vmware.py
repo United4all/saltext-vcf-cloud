@@ -862,27 +862,60 @@ def test_script_uses_native_salt_cloud_renderer(monkeypatch):
     )
 
 
-def test_stop_parses_action_kwargs_soft_false(monkeypatch):
-    power_off = MagicMock(return_value="task-off")
-    shutdown_guest = MagicMock()
+def _power_mocks(monkeypatch, power_state):
+    vm_lookup = MagicMock(
+        return_value=SimpleNamespace(runtime=SimpleNamespace(powerState=power_state))
+    )
+    monkeypatch.setattr(cloud, "_vm", vm_lookup)
     monkeypatch.setattr(cloud, "_vcf_opts", lambda: {"connection": "opts"})
     monkeypatch.setattr(cloud, "_task_timeout", lambda: 30)
-    monkeypatch.setattr(cloud.vim_vm_power, "power_off", power_off)
-    monkeypatch.setattr(cloud.vim_vm_power, "shutdown_guest", shutdown_guest)
     monkeypatch.setattr(cloud, "_wait_task", MagicMock())
+    mocks = {}
+    for func in ("power_on", "power_off", "shutdown_guest"):
+        mocks[func] = MagicMock(return_value=f"task-{func}")
+        monkeypatch.setattr(cloud.vim_vm_power, func, mocks[func])
+    return mocks
 
-    assert cloud.stop("vm-01", {"soft": "false"}, call="action") is True
-    power_off.assert_called_once_with({"connection": "opts"}, "vm-01")
-    shutdown_guest.assert_not_called()
+
+def test_start_powers_on_stopped_vm(monkeypatch):
+    mocks = _power_mocks(monkeypatch, "poweredOff")
+
+    assert cloud.start("vm-01", call="action") == "powered on"
+    mocks["power_on"].assert_called_once_with({"connection": "opts"}, "vm-01")
+    cloud._wait_task.assert_called_once_with(  # pylint: disable=protected-access
+        "task-power_on", timeout=30
+    )
+
+
+def test_start_reports_already_powered_on(monkeypatch):
+    mocks = _power_mocks(monkeypatch, "poweredOn")
+
+    assert cloud.start("vm-01", call="action") == "already powered on"
+    mocks["power_on"].assert_not_called()
+
+
+def test_stop_reports_already_powered_off(monkeypatch):
+    mocks = _power_mocks(monkeypatch, "poweredOff")
+
+    assert cloud.stop("vm-01", {}, call="action") == "already powered off"
+    mocks["power_off"].assert_not_called()
+    mocks["shutdown_guest"].assert_not_called()
+
+
+def test_stop_parses_action_kwargs_soft_false(monkeypatch):
+    mocks = _power_mocks(monkeypatch, "poweredOn")
+
+    assert cloud.stop("vm-01", {"soft": "false"}, call="action") == "powered off"
+    mocks["power_off"].assert_called_once_with({"connection": "opts"}, "vm-01")
+    mocks["shutdown_guest"].assert_not_called()
 
 
 def test_stop_parses_action_kwargs_soft_true(monkeypatch):
-    shutdown_guest = MagicMock(return_value=True)
-    monkeypatch.setattr(cloud, "_vcf_opts", lambda: {"connection": "opts"})
-    monkeypatch.setattr(cloud.vim_vm_power, "shutdown_guest", shutdown_guest)
+    mocks = _power_mocks(monkeypatch, "poweredOn")
 
-    assert cloud.stop("vm-01", {"soft": "true"}, call="action") is True
-    shutdown_guest.assert_called_once_with({"connection": "opts"}, "vm-01")
+    assert cloud.stop("vm-01", {"soft": "true"}, call="action") == "powered off"
+    mocks["shutdown_guest"].assert_called_once_with({"connection": "opts"}, "vm-01")
+    mocks["power_off"].assert_not_called()
 
 
 def test_create_clones_configures_and_calls_native_bootstrap(monkeypatch, loader_globals):
