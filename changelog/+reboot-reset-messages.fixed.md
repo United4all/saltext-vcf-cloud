@@ -1,1 +1,0 @@
-Make `salt-cloud -a reboot <name>` behave like the `reset` action of Salt's former core VMware driver: it hard-resets a running VM (or requests a guest reboot with `soft=true`) and returns `reset`, or `cannot reset in suspended/powered off state` without acting on a stopped or suspended VM.

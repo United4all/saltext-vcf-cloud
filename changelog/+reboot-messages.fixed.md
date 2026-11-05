@@ -1,0 +1,1 @@
+Return `reboot` from `salt-cloud -a reboot <name>`, or `cannot reboot in suspended/powered off state` without acting on a stopped or suspended VM. It still requests a guest reboot through VMware Tools.

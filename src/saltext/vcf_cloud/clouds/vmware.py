@@ -1024,23 +1024,44 @@ def stop(name, kwargs=None, call=None):
     return "powered off"
 
 
-def reboot(name, kwargs=None, call=None):
+def reboot(name, call=None):
+    """Request a guest reboot through VMware Tools.
+
+    Returns ``reboot``, or ``cannot reboot in suspended/powered off state`` without
+    acting on a stopped or suspended VM.
+    """
+    if str(_vm(name).runtime.powerState) in ("suspended", "poweredOff"):
+        ret = "cannot reboot in suspended/powered off state"
+        log.info("VM %s %s", name, ret)
+        return ret
+    log.info("Rebooting VM %s", name)
+    vim_vm_power.reboot_guest(_vcf_opts(), name)
+    return "reboot"
+
+
+def reset(name, kwargs=None, call=None):
     """Hard-reset a VM, or request a guest reboot when ``soft`` is true.
 
-    This is the ``reset`` action of Salt's former core VMware driver, with the same
-    messages: ``reset``, or ``cannot reset in suspended/powered off state``.
+    Matches the ``reset`` action of Salt's former core VMware driver: returns
+    ``reset``, ``cannot reset in suspended/powered off state`` without acting on a
+    stopped or suspended VM, or ``failed to reset``.
     """
+    if call != "action":
+        raise SaltCloudSystemExit("The reset action must be called with -a or --action.")
     if str(_vm(name).runtime.powerState) in ("suspended", "poweredOff"):
         ret = "cannot reset in suspended/powered off state"
         log.info("VM %s %s", name, ret)
         return ret
     soft = _as_bool((kwargs or {}).get("soft", False))
-    log.info("Resetting VM %s", name)
-    if soft:
-        vim_vm_power.reboot_guest(_vcf_opts(), name)
-    else:
-        task = vim_vm_power.reset(_vcf_opts(), name)
-        _wait_task(task, timeout=_task_timeout())
+    try:
+        log.info("Resetting VM %s", name)
+        if soft:
+            vim_vm_power.reboot_guest(_vcf_opts(), name)
+        else:
+            _wait_task(vim_vm_power.reset(_vcf_opts(), name), timeout=_task_timeout())
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        log.error("Error while resetting VM %s: %s", name, exc, exc_info_on_loglevel=logging.DEBUG)
+        return "failed to reset"
     return "reset"
 
 
