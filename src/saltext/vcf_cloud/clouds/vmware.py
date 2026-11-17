@@ -44,6 +44,32 @@ except ImportError:
     HAS_VCF = False
 
 
+def _drop_inherited_service_instances():
+    """Forget vCenter connections inherited from the parent process.
+
+    ``saltext.vcf`` caches one ServiceInstance per process. Salt Cloud forks pool
+    workers (``map_providers_parallel``) before every action, so in a long-lived
+    process such as an orchestration the workers inherit the parent's cached
+    connection and use its TLS socket too. The parent's next call then fails with
+    ``ssl.SSLError: record layer failure``. A forked child must open its own
+    connection. The entries are only dropped, not disconnected: a logout would end
+    the parent's session.
+    """
+    cache = getattr(vcf_vim, "_SI_CACHE", None)
+    if isinstance(cache, dict):
+        cache.clear()
+
+
+# Register once per interpreter: Salt's loader may import this module many times.
+if (
+    HAS_VCF
+    and hasattr(os, "register_at_fork")
+    and not getattr(vcf_vim, "_vcf_cloud_fork_hook", False)
+):
+    os.register_at_fork(after_in_child=_drop_inherited_service_instances)
+    vcf_vim._vcf_cloud_fork_hook = True  # pylint: disable=protected-access
+
+
 def __virtual__():
     """Load for configured ``vmware`` providers when saltext-vcf is present."""
     if get_configured_provider() is False:

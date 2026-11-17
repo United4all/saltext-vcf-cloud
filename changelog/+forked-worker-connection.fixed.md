@@ -1,0 +1,1 @@
+Stop forked Salt Cloud workers from reusing the parent's cached vCenter connection. In a long-lived process such as an orchestration (`salt.runner cloud.action`), the second and later actions failed with `ssl.SSLError: [SSL: RECORD_LAYER_FAILURE]`, because the `list_nodes` pool workers shared the parent's TLS socket.

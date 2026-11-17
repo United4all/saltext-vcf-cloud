@@ -1449,3 +1449,34 @@ def test_show_tags_returns_tags_attached_to_vm(monkeypatch):
     assert cloud.show_tags("vm-01", call="action") == {
         "Environment": {"cardinality": "SINGLE", "tags": ["Production"]}
     }
+
+
+def test_drop_inherited_service_instances_clears_vcf_cache(monkeypatch):
+    cache = {"vcenter:443:user": object()}
+    monkeypatch.setattr(cloud.vcf_vim, "_SI_CACHE", cache, raising=False)
+
+    cloud._drop_inherited_service_instances()  # pylint: disable=protected-access
+
+    assert not cache
+
+
+def test_forked_child_does_not_reuse_parent_service_instance(monkeypatch):
+    # Salt Cloud forks list_nodes workers before every action. In one long-lived
+    # process (an orchestration) they must not inherit the parent's vCenter connection.
+    if not hasattr(cloud.os, "fork"):
+        pytest.skip("needs os.fork")
+    cache = {"vcenter:443:user": object()}
+    monkeypatch.setattr(cloud.vcf_vim, "_SI_CACHE", cache, raising=False)
+
+    read_fd, write_fd = cloud.os.pipe()
+    pid = cloud.os.fork()
+    if pid == 0:  # pragma: no cover - runs in the child
+        cloud.os.write(write_fd, str(len(cloud.vcf_vim._SI_CACHE)).encode())
+        cloud.os._exit(0)  # pylint: disable=protected-access
+    cloud.os.close(write_fd)
+    cloud.os.waitpid(pid, 0)
+    child_cache_size = cloud.os.read(read_fd, 16).decode()
+    cloud.os.close(read_fd)
+
+    assert child_cache_size == "0"
+    assert len(cache) == 1  # the parent keeps its connection
